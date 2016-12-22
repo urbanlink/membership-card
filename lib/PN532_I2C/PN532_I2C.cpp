@@ -15,6 +15,8 @@ PN532_I2C::PN532_I2C(TwoWire &wire)
 void PN532_I2C::begin()
 {
     _wire->begin(0,2);
+    _wire->setClock(100000);
+	  _wire->setClockStretchLimit(2000);
 }
 
 void PN532_I2C::wakeup()
