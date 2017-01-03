@@ -1,19 +1,19 @@
 /**************************************************************************/
-/*! 
+/*!
     @file     Adafruit_PN532.h
     @author   Adafruit Industries
 	@license  BSD (see license.txt)
-	
+
 
 	This is a library for the Adafruit PN532 NFC/RFID breakout boards
-	This library works with the Adafruit NFC breakout 
+	This library works with the Adafruit NFC breakout
 	----> https://www.adafruit.com/products/364
-	
-	Check out the links above for our tutorials and wiring diagrams 
+
+	Check out the links above for our tutorials and wiring diagrams
   These chips use SPI or I2C to communicate.
-	
-	Adafruit invests time and resources providing this open source code, 
-	please support Adafruit and open-source hardware by purchasing 
+
+	Adafruit invests time and resources providing this open source code,
+	please support Adafruit and open-source hardware by purchasing
 	products from Adafruit!
 
 	@section  HISTORY
@@ -23,7 +23,7 @@
 	v1.1  - Added full command list
           - Added 'verbose' mode flag to constructor to toggle debug output
           - Changed readPassiveTargetID() to return variable length values
-	
+
 */
 /**************************************************************************/
 
@@ -31,6 +31,13 @@
 #define ADAFRUIT_PN532_H
 
 #include "Arduino.h"
+#include "Utils.h"
+
+// The maximum time to wait for an answer from the PN532
+// Do NOT use infinite timeouts like in Adafruit code!
+#define PN532_TIMEOUT  3000
+// The packet buffer is used for sending commands and for receiving responses from the PN532
+#define PN532_PACKBUFFSIZE   80
 
 #define PN532_PREAMBLE                      (0x00)
 #define PN532_STARTCODE1                    (0x00)
@@ -90,7 +97,12 @@
 #define PN532_I2C_READY                     (0x01)
 #define PN532_I2C_READYTIMEOUT              (20)
 
-#define PN532_MIFARE_ISO14443A              (0x00)
+//#define PN532_MIFARE_ISO14443A              (0x00)
+#define CARD_TYPE_106KB_ISO14443A           (0x00) // card baudrate 106 kB
+#define CARD_TYPE_212KB_FELICA              (0x01) // card baudrate 212 kB
+#define CARD_TYPE_424KB_FELICA              (0x02) // card baudrate 424 kB
+#define CARD_TYPE_106KB_ISO14443B           (0x03) // card baudrate 106 kB
+#define CARD_TYPE_106KB_JEWEL               (0x04) // card baudrate 106 kB
 
 // Mifare Commands
 #define MIFARE_CMD_AUTH_A                   (0x60)
@@ -149,64 +161,89 @@
 #define PN532_GPIO_P34                      (4)
 #define PN532_GPIO_P35                      (5)
 
-class Adafruit_PN532{
- public:
-  Adafruit_PN532(uint8_t irq, uint8_t reset);  // Hardware I2C
-  void begin(void);
-  
-  // Generic PN532 functions
-  bool     SAMConfig(void);
-  uint32_t getFirmwareVersion(void);
-  bool     sendCommandCheckAck(uint8_t *cmd, uint8_t cmdlen, uint16_t timeout = 1000);  
-  bool     writeGPIO(uint8_t pinstate);
-  uint8_t  readGPIO(void);
-  bool     setPassiveActivationRetries(uint8_t maxRetries);
-  
-  // ISO14443A functions
-  bool readPassiveTargetID(uint8_t cardbaudrate, uint8_t * uid, uint8_t * uidLength, uint16_t timeout = 0); //timeout 0 means no timeout - will block forever.
-  bool inDataExchange(uint8_t * send, uint8_t sendLength, uint8_t * response, uint8_t * responseLength);
-  bool inListPassiveTarget();
-  
-  // Mifare Classic functions
-  bool    mifareclassic_IsFirstBlock (uint32_t uiBlock);
-  bool    mifareclassic_IsTrailerBlock (uint32_t uiBlock);
-  uint8_t mifareclassic_AuthenticateBlock (uint8_t * uid, uint8_t uidLen, uint32_t blockNumber, uint8_t keyNumber, uint8_t * keyData);
-  uint8_t mifareclassic_ReadDataBlock (uint8_t blockNumber, uint8_t * data);
-  uint8_t mifareclassic_WriteDataBlock (uint8_t blockNumber, uint8_t * data);
-  uint8_t mifareclassic_FormatNDEF (void);
-  uint8_t mifareclassic_WriteNDEFURI (uint8_t sectorNumber, uint8_t uriIdentifier, const char * url);
-  
-  // Mifare Ultralight functions
-  uint8_t mifareultralight_ReadPage (uint8_t page, uint8_t * buffer);
-  uint8_t mifareultralight_WritePage (uint8_t page, uint8_t * data);
+enum eCardType {
+  CARD_Unknown   = 0, // Mifare Classic or other card
+  CARD_Desfire   = 1, // A Desfire card with normal 7 byte UID  (bit 0)
+  CARD_DesRandom = 3, // A Desfire card with 4 byte random UID  (bit 0 + 1)
+};
 
-  // NTAG2xx functions
-  uint8_t ntag2xx_ReadPage (uint8_t page, uint8_t * buffer);
-  uint8_t ntag2xx_WritePage (uint8_t page, uint8_t * data);
-  uint8_t ntag2xx_WriteNDEFURI (uint8_t uriIdentifier, char * url, uint8_t dataLen);
-  
-  // Help functions to display formatted text
-  static void PrintHex(const byte * data, const uint32_t numBytes);
-  static void PrintHexChar(const byte * pbtData, const uint32_t numBytes);
+class PN532{
+  public:
+    PN532();  // Hardware I2C
 
- private:
-  uint8_t _ss, _clk, _mosi, _miso;
-  uint8_t _irq, _reset;
-  uint8_t _uid[7];       // ISO14443A uid
-  uint8_t _uidLen;       // uid len
-  uint8_t _key[6];       // Mifare Classic key
-  uint8_t _inListedTag;  // Tg number of inlisted tag.
-  bool    _usingSPI;     // True if using SPI, false if using I2C.
-  bool    _hardwareSPI;  // True is using hardware SPI, false if using software SPI.
+    void InitI2C(byte irq, byte reset);
 
-  // Low level communication functions that handle both SPI and I2C.
-  void readdata(uint8_t* buff, uint8_t n);
-  void writecommand(uint8_t* cmd, uint8_t cmdlen);
-  bool isready();
-  bool waitready(uint16_t timeout);
-  bool readack();
+    // Generic PN532 functions
+    void      begin(void);
+    void      SetDebugLevel(byte level);
+    bool      SAMConfig(void);
+    uint32_t  GetFirmwareVersion(void);
+    bool      SendCommandCheckAck(byte *cmd, byte cmdlen, uint16_t timeout = 1000);
+    bool      WriteGPIO(byte pinstate);
+    byte      ReadGPIO(void);
+    bool      SetPassiveActivationRetries(byte maxRetries);
+    // This function is overridden in Desfire.cpp
+    virtual bool SwitchOffRfField();
 
-  // Note there are i2c_read and i2c_write inline functions defined in the .cpp file.
+    // ISO14443A functions
+    // bool ReadPassiveTargetID(byte* uidBuffer, byte* uidLength, eCardType* pe_CardType);
+    bool ReadPassiveTargetID(byte* uid, byte* uidLength, eCardType* pe_CardType);
+    // bool ReadPassiveTargetID(byte* uidBuffer, byte* uidLength, eCardType* pe_CardType);
+    bool inDataExchange(byte * send, byte sendLength, byte * response, byte * responseLength);
+    bool inListPassiveTarget();
+
+    // Mifare Classic functions
+    bool    mifareclassic_IsFirstBlock (uint32_t uiBlock);
+    bool    mifareclassic_IsTrailerBlock (uint32_t uiBlock);
+    byte mifareclassic_AuthenticateBlock (byte * uid, byte uidLen, uint32_t blockNumber, byte keyNumber, byte * keyData);
+    byte mifareclassic_ReadDataBlock (byte blockNumber, byte * data);
+    byte mifareclassic_WriteDataBlock (byte blockNumber, byte * data);
+    byte mifareclassic_FormatNDEF (void);
+    byte mifareclassic_WriteNDEFURI (byte sectorNumber, byte uriIdentifier, const char * url);
+
+    // Mifare Ultralight functions
+    byte mifareultralight_ReadPage (byte page, byte * buffer);
+    byte mifareultralight_WritePage (byte page, byte * data);
+
+    // NTAG2xx functions
+    byte ntag2xx_ReadPage (byte page, byte * buffer);
+    byte ntag2xx_WritePage (byte page, byte * data);
+    byte ntag2xx_WriteNDEFURI (byte uriIdentifier, char * url, byte dataLen);
+
+    // Help functions to display formatted text
+    static void PrintHex(const byte * data, const uint32_t numBytes);
+    static void PrintHexChar(const byte * pbtData, const uint32_t numBytes);
+
+  protected:
+    bool CheckPN532Status(byte u8_Status);
+    byte ReadData(byte* buff, byte n);
+
+    byte mu8_DebugLevel;   // 0, 1, or 2
+    byte mu8_PacketBuffer[PN532_PACKBUFFSIZE];
+
+  private:
+    byte _ss;
+    byte _clk;
+    byte _mosi;
+    byte _miso;
+    byte _irq;
+    byte _reset;
+
+    byte _uid[7];       // ISO14443A uid
+    byte _uidLen;       // uid len
+    byte _key[6];       // Mifare Classic key
+    byte _inListedTag;  // Tg number of inlisted tag.
+    bool    _usingSPI;     // True if using SPI, false if using I2C.
+    bool    _hardwareSPI;  // True is using hardware SPI, false if using software SPI.
+
+    // Low level communication functions that handle both SPI and I2C.
+
+    void writecommand(byte* cmd, byte cmdlen);
+    bool IsReady();
+    bool WaitReady();
+    bool readack();
+
+    // Note there are i2c_read and i2c_write inline functions defined in the .cpp file.
 };
 
 #endif
