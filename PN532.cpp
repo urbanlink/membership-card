@@ -155,7 +155,6 @@ void PN532::begin() {
 
 }
 
-
 /**************************************************************************
     Enable / disable debug output to SerialClass
     0 = Off, 1 = high level debug, 2 = low level debug (more details)
