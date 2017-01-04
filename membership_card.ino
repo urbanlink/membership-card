@@ -30,21 +30,20 @@
 #include "Desfire.h"
 
 #include <ESP8266WiFi.h>
-const char* ssid     = "Haagse Makers";
-const char* password = "haagsemakers12";
-
+const char* ssid     = "";
+const char* password = "";
 const char* host = "data.sparkfun.com";
 const char* streamId   = "2JM4OXDwp8CYXmZwDNZv";
 const char* privateKey = "GPw1EaMrjpUKaVJqdGJW";
 
 
-struct kCard
-{
-    byte     u8_UidLength;   // UID = 4 or 7 bytes
-    byte     u8_KeyVersion;  // for Desfire random ID cards
-    bool      b_PN532_Error; // true -> the error comes from the PN532, false -> crypto error
-    eCardType e_CardType;
+struct kCard {
+  byte     u8_UidLength;   // UID = 4 or 7 bytes
+  byte     u8_KeyVersion;  // for Desfire random ID cards
+  bool      b_PN532_Error; // true -> the error comes from the PN532, false -> crypto error
+  eCardType e_CardType;
 };
+
 
 #define PN532_IRQ   (14)
 #define PN532_RESET (12)
@@ -59,23 +58,23 @@ void setup(void) {
 
   // We start by connecting to a WiFi network
 
-  Serial.println();
-  Serial.println();
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
-
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-
-  Serial.println("");
-  Serial.println("WiFi connected");
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
+//  Serial.println();
+//  Serial.println();
+//  Serial.print("Connecting to ");
+//  Serial.println(ssid);
+//
+//  WiFi.mode(WIFI_STA);
+//  WiFi.begin(ssid, password);
+//
+//  while (WiFi.status() != WL_CONNECTED) {
+//    delay(500);
+//    Serial.print(".");
+//  }
+//
+//  Serial.println("");
+//  Serial.println("WiFi connected");
+//  Serial.println("IP address: ");
+//  Serial.println(WiFi.localIP());
 
   Serial.println("Hello!");
 
@@ -128,8 +127,12 @@ void loop(void) {
       Serial.print(" 0x");Serial.print(uid[i], HEX);
     }
     Serial.println("");
+    Serial.print("Card Type: ");Serial.println(cType);
 
-    senddata(1234);
+    // Read the card
+      // if default, reading with default key
+      // if random, get the real UID with PICC authentication.
+    // senddata(1234);
     // Wait 1 second before continuing
     delay(1000);
   } else {

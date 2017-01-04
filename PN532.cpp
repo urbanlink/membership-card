@@ -481,7 +481,12 @@ bool PN532::SetPassiveActivationRetries(byte maxRetries) {
     @returns 1 if everything executed properly, 0 for an error
 */
 /**************************************************************************/
-bool PN532::ReadPassiveTargetID(byte* uid, byte* uidLength, eCardType* pe_CardType) {
+bool PN532::ReadPassiveTargetID(byte* uid, byte* uidLength, eCardType* cardType) {
+
+  // initialize return variables
+  memset(uid, 0, 8);
+  *uidLength = 0;
+  *cardType  = CARD_Unknown;
 
   pn532_packetbuffer[0] = PN532_COMMAND_INLISTPASSIVETARGET;
   pn532_packetbuffer[1] = 1;  // max 1 cards at once (we can set this to 2 later)
@@ -491,24 +496,22 @@ bool PN532::ReadPassiveTargetID(byte* uid, byte* uidLength, eCardType* pe_CardTy
     #ifdef PN532DEBUG
       PN532DEBUGPRINT.println(F("No card(s) read"));
     #endif
-    return 0x0;  // no cards read
+    return false;  // no cards read
   }
 
   // wait for a card to enter the field (only possible with I2C)
-  if (!_usingSPI) {
+  #ifdef PN532DEBUG
+    PN532DEBUGPRINT.println(F("Waiting for IRQ (indicates card presence)"));
+  #endif
+  if (!WaitReady()) {
     #ifdef PN532DEBUG
-      PN532DEBUGPRINT.println(F("Waiting for IRQ (indicates card presence)"));
+      PN532DEBUGPRINT.println(F("IRQ Timeout"));
     #endif
-    if (!WaitReady()) {
-      #ifdef PN532DEBUG
-        PN532DEBUGPRINT.println(F("IRQ Timeout"));
-      #endif
-      return 0x0;
-    }
+    return false;
   }
 
-  // read data packet
-  ReadData(pn532_packetbuffer, 20);
+  // read the data packet with card data
+  ReadData(pn532_packetbuffer, 28);
   // check some basic stuff
 
   /* ISO14443A card response should be in the following format:
@@ -526,34 +529,47 @@ bool PN532::ReadPassiveTargetID(byte* uid, byte* uidLength, eCardType* pe_CardTy
   #ifdef MIFAREDEBUG
     PN532DEBUGPRINT.print(F("Found ")); PN532DEBUGPRINT.print(pn532_packetbuffer[7], DEC); PN532DEBUGPRINT.println(F(" tags"));
   #endif
+  // Return if not 1 card is found
   if (pn532_packetbuffer[7] != 1)
     return 0;
 
-  uint16_t sens_res = pn532_packetbuffer[9];
-  sens_res <<= 8;
-  sens_res |= pn532_packetbuffer[10];
-  #ifdef MIFAREDEBUG
-    PN532DEBUGPRINT.print(F("ATQA: 0x"));  PN532DEBUGPRINT.println(sens_res, HEX);
-    PN532DEBUGPRINT.print(F("SAK: 0x"));  PN532DEBUGPRINT.println(pn532_packetbuffer[11], HEX);
-  #endif
-
-  /* Card appears to be Mifare Classic */
-  *uidLength = pn532_packetbuffer[12];
-  #ifdef MIFAREDEBUG
-    PN532DEBUGPRINT.print(F("UID:"));
-  #endif
-  for (byte i=0; i < pn532_packetbuffer[12]; i++)
-  {
-    uid[i] = pn532_packetbuffer[13+i];
-    #ifdef MIFAREDEBUG
-      PN532DEBUGPRINT.print(F(" 0x"));PN532DEBUGPRINT.print(uid[i], HEX);
-    #endif
+  // Get the UID length
+  byte u8_IdLength = pn532_packetbuffer[12];
+  if (u8_IdLength != 4 && u8_IdLength != 7) {
+    Utils::Print("Card has unsupported UID length: ");
+    Utils::PrintDec(u8_IdLength, LF);
+    return true; // unsupported card found -> this is not an error!
   }
-  #ifdef MIFAREDEBUG
-    PN532DEBUGPRINT.println();
-  #endif
+  // return the uid length
+  *uidLength = u8_IdLength;
 
-  return 1;
+  // Get the UID
+  for (byte i=0; i < pn532_packetbuffer[12]; i++) {
+    uid[i] = pn532_packetbuffer[13+i];
+  }
+
+  uint16_t u16_ATQA = ((uint16_t)pn532_packetbuffer[9] << 8) | pn532_packetbuffer[10];
+  byte     u8_SAK   = pn532_packetbuffer[11];
+  if (u8_IdLength == 7 && uid[0] != 0x80 && u16_ATQA == 0x0344 && u8_SAK == 0x20) {
+    *cardType = CARD_Desfire;
+  }
+  if (u8_IdLength == 4 && uid[0] == 0x80 && u16_ATQA == 0x0304 && u8_SAK == 0x20) {
+    *cardType = CARD_DesRandom;
+  }
+
+  if (mu8_DebugLevel > 0) {
+    Utils::Print("Card UID:    ");
+    Utils::PrintHexBuf(uid, u8_IdLength, LF);
+    char s8_Buf[80];
+    sprintf(s8_Buf, "Card Type: ATQA= 0x%04X, SAK= 0x%02X", u16_ATQA, u8_SAK);
+
+    if (*cardType == CARD_Desfire)   strcat(s8_Buf, " (Desfire Default)");
+    if (*cardType == CARD_DesRandom) strcat(s8_Buf, " (Desfire RandomID)");
+
+    Utils::Print(s8_Buf, LF);
+  }
+
+  return true;
 }
 
 /**************************************************************************/
